@@ -94,9 +94,9 @@ class FreeHTTPClient:
             datatype: str = 'json') -> dir:
         """
         Fetch data from the Intraday API.
-        `This API returns intraday time series of the equity specified, covering extended trading hours where applicable
-        (e.g., 4:00am to 8:00pm Eastern Time for the US market). The intraday data is derived from the Securities
-        Information Processor (SIP) market-aggregated data. You can query both raw (as-traded) and
+        From API Documentation: This API returns intraday time series of the equity specified, covering extended trading
+        hours where applicable (e.g., 4:00am to 8:00pm Eastern Time for the US market). The intraday data is derived
+        from the Securities Information Processor (SIP) market-aggregated data. You can query both raw (as-traded) and
         split/dividend-adjusted intraday data from this endpoint.
 
         This API returns the most recent 1-2 months of intraday data and is best suited for short-term/medium-term
