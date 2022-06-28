@@ -17,7 +17,6 @@ INTRADAY_INTERVALS = [
         ]
 
 
-# noinspection SpellCheckingInspection
 class FreeHTTPClient:
     MAX_DAY = 500
     MAX_MIN = 5
@@ -26,7 +25,9 @@ class FreeHTTPClient:
             self,
             apikey: str,
             *,
-            loop: asyncio.AbstractEventLoop):
+            loop: asyncio.AbstractEventLoop = None):
+        if not loop:
+            loop = asyncio.get_running_loop()
         self.loop = loop
         self.apikey = apikey
         self._min_count = 0
@@ -43,17 +44,27 @@ class FreeHTTPClient:
         limited_amt = 0
         for tries in range(5):
             retry_after = self.get_retry_after()  # Immediately check if ratelimiting is necessary
-            await asyncio.sleep(retry_after)
+            if retry_after > 0:
+                print(f'Waiting for ratelimit: {retry_after} seconds')
+                await asyncio.sleep(retry_after)
 
             body = {}
             async with self._session.get('/query', params=params) as resp:
                 if resp.status != 200:
                     await asyncio.sleep((1 + tries) * 5)  # Alpha Vantage always returns 200 for everything
                     continue
-                body = await resp.json()
+                body = None
+                try:
+                    body = await resp.json()
+                except aiohttp.ContentTypeError:
+                    body = await resp.text()
+                    self._min_count += 1
+                    self._day_counter += 1
+                    return body
 
             if 'Thank you for using Alpha Vantage!' in body.get('Note', ''):
                 limited_amt += 1
+                self._min_count = self.MAX_MIN
                 await asyncio.sleep(self.get_retry_after())
                 continue  # Being rate limited
 
@@ -132,6 +143,27 @@ class FreeHTTPClient:
 
         return resp_body
 
+    async def get_intraday_extended(
+            self,
+            symbol: str,
+            interval: str,
+            segment: str,
+            *,
+            adjusted: str = 'true'):
+        if interval not in INTRADAY_INTERVALS:
+            raise BadParameters(f'Parameter `interval` must be on of: {INTRADAY_INTERVALS}')
+        params = {
+            'function': 'TIME_SERIES_INTRADAY_EXTENDED',
+            'symbol': symbol,
+            'interval': interval,
+            'slice': segment,
+            'adjusted': adjusted
+        }
+
+        resp_body = await self.request(**params)
+
+        return resp_body
+
     async def close(self):
         await self._session.close()
         await asyncio.sleep(0.1)
@@ -141,11 +173,11 @@ class FreeHTTPClient:
             now = get_utc_now().astimezone(timezone)
             tomorrow = get_next_midnight(now)
             delta = tomorrow - now
-            return delta.seconds
+            return delta.seconds + 5
         elif self._min_count >= FreeHTTPClient.MAX_MIN:
             now = get_utc_now().astimezone(timezone)
             next_minute = get_next_minute(now)
             delta = next_minute - now
-            return delta.seconds
+            return delta.seconds + 5
         else:
             return 0
